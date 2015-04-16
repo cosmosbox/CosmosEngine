@@ -8,8 +8,12 @@
 //              https://github.com/mr-kelly/CosmosEngine
 //
 //------------------------------------------------------------------------------
+
+using System;
 using UnityEngine;
 using System.Collections;
+using CosmosEngine;
+using System.IO;
 
 public class CMyGame : MonoBehaviour
 {
@@ -25,7 +29,6 @@ public class CMyGame : MonoBehaviour
             null,
             null);
 
-        
         CUIModule.Instance.OpenWindow<CUIDemoHome>();
     }
 
@@ -34,7 +37,11 @@ public class CMyGame : MonoBehaviour
         CGameSettings _ = CGameSettings.Instance;
 
         CDebug.Log("Begin Load tab file...");
-        _.LoadTab<CTestTabInfo>(false, new string[] {"setting/test_tab.bytes"});
+
+        //var tabContent = File.ReadAllText("Assets/" + CCosmosEngine.GetConfig("ProductRelPath") + "/setting/test_tab.bytes");
+        //var path = CResourceModule.GetResourceFullPath("/setting/test_tab.bytes");
+        var tabContent = File.ReadAllText(Application.dataPath + "/" + CCosmosEngine.GetConfig("ProductRelPath") + "/setting/test_tab.bytes");
+        _.LoadTab<CTestTabInfo>(tabContent);
         CDebug.Log("Output the tab file...");
         foreach (CTestTabInfo info in _.GetInfos<CTestTabInfo>())
         {

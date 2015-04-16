@@ -16,12 +16,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 using UnityEngine;
 using System.IO;
-
 
 /// <summary>
 /// Some tool function for time, bytes, MD5, or something...
@@ -61,32 +57,6 @@ public class CTool
         }
     }
 
-    // 需要StartCoroutine
-    public static IEnumerator TimeCallback(float time, Action callback)
-    {
-        yield return new WaitForSeconds(time);
-        callback();
-    }
-
-    public static Coroutine WaitCallback(Action<Action> func)
-    {
-        return CCosmosEngine.EngineInstance.StartCoroutine(CoWaitCallback(func));
-    }
-
-    private static IEnumerator CoWaitCallback(Action<Action> func)
-    {
-        bool wait = true;
-        func(() =>
-        {
-            wait = false;
-        });
-        // ReSharper disable once LoopVariableIsNeverChangedInsideLoop
-        while (wait)
-        {
-            yield return null;
-        }
-    }
-
     /// <summary>
     /// 模仿 NGUISelectionTool的同名方法，将位置旋转缩放清零
     /// </summary>
@@ -119,11 +89,9 @@ public class CTool
         {
             var child = tran.GetChild(0);
             child.parent = null; // 清空父, 因为.Destroy非同步的
-#if UNITY_EDITOR
-            if (!EditorApplication.isPlaying)
+            if (Application.isEditor && !Application.isPlaying)
                 GameObject.DestroyImmediate(child.gameObject);
             else
-#endif
                 GameObject.Destroy(child.gameObject);
         }
     }
@@ -196,6 +164,11 @@ public class CTool
     /// <returns></returns>
     public static List<T> Split<T>(string str, params char[] args)
     {
+        if (args.Length == 0)
+        {
+            args = new char[] {'|'}; // 默认
+        }
+
         var retList = new List<T>();
         if (!string.IsNullOrEmpty(str))
         {
@@ -709,22 +682,23 @@ public class CTool
         return obj;
     }
 
-    public static void SetChild(GameObject child, GameObject parent, bool ignoreRotation = false, bool ignoreScale = false)
+    public static void SetChild(GameObject child, GameObject parent, bool selfRotation = false, bool selfScale = false)
     {
-        SetChild(child.transform, parent.transform, ignoreRotation, ignoreScale);
+        SetChild(child.transform, parent.transform, selfRotation, selfScale);
     }
-    public static void SetChild(Transform child, Transform parent, bool ignoreRotation = false, bool ignoreScale = false)
+    public static void SetChild(Transform child, Transform parent, bool selfRotation = false, bool selfScale = false)
     {
         child.parent = parent;
-        ResetTransform(child, ignoreRotation, ignoreScale);
+        ResetTransform(child, selfRotation, selfScale);
     }
-    public static void ResetTransform(UnityEngine.Transform transform, bool ignoreRotation = false, bool ignoreScale = false)
+    public static void ResetTransform(UnityEngine.Transform transform, bool selfRotation = false, bool selfScale = false)
     {
         transform.localPosition = UnityEngine.Vector3.zero;
-        if (!ignoreScale)
-            transform.localScale = UnityEngine.Vector3.one;
-        if (!ignoreRotation)
+        if (!selfRotation)
             transform.localEulerAngles = UnityEngine.Vector3.zero;
+
+        if (!selfScale)
+            transform.localScale = UnityEngine.Vector3.one;
     }
 
     // 获取指定流的MD5
@@ -985,7 +959,7 @@ public class CTool
     }
 
     // 概率，百分比, // 注意，0的时候当是100%
-    public static bool Probability(int chancePercent)
+    public static bool Probability(byte chancePercent)
     {
         int chance = UnityEngine.Random.Range(1, 101);
 

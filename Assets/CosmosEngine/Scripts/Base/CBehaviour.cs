@@ -12,16 +12,24 @@ using UnityEngine;
 using System.Collections;
 
 /// <summary>
-///
+/// Without Update, With some cache
 /// </summary>
-public class CBehaviour : MonoBehaviour
+public abstract class CBehaviour : MonoBehaviour
 {
-    public Transform _Transform;
-    public GameObject _GameObject;
-    protected bool IsDeleted = false;
+    private Transform _cachedTransform;
+    public Transform CachedTransform { get { return _cachedTransform ?? (_cachedTransform = transform); } }
 
-    static bool _IsApplicationQuited = false;  // 全局标记, 程序是否退出状态
-    public static bool IsApplicationQuited {get { return _IsApplicationQuited; }}
+    private GameObject _cacheGameObject;
+    public GameObject CachedGameObject { get { return _cacheGameObject ?? (_cacheGameObject = gameObject); } }
+
+    [System.Obsolete]
+    public GameObject _GameObject {get { return CachedGameObject; }}
+
+    protected bool IsDestroyed = false;
+    public event System.Action<CBehaviour> DestroyEvent;
+
+    static bool _isApplicationQuited = false;  // 全局标记, 程序是否退出状态
+    public static bool IsApplicationQuited {get { return _isApplicationQuited; }}
 
     public static System.Action ApplicationQuitEvent;
 
@@ -32,51 +40,36 @@ public class CBehaviour : MonoBehaviour
         set { _TimeScale = value; }
     }
 
-    public virtual void Awake()
-    {
-        _Transform = transform;
-        _GameObject = gameObject;
-    }
-
-    // Use this for initialization
-    public virtual void Start()
-    {
-
-    }
-
-    // Update is called once per frame
-    public virtual void Update()
-    {
-		
-    }
-
     /// <summary>
     /// GameObject.Destory对象
     /// </summary>
     public virtual void Delete()
     {
-        GameObject.Destroy(gameObject);
+        if (!IsApplicationQuited)
+            UnityEngine.Object.Destroy(gameObject);
     }
 
     // 只删除自己这个Component
     public virtual void DeleteSelf()
     {
-        GameObject.Destroy(this);
+        UnityEngine.Object.Destroy(this);
     }
 
     // 继承CBehaivour必须通过Delete删除
     // 程序退出时会强行Destroy所有，这里做了个标记
     protected virtual void OnDestroy()
     {
-        IsDeleted = true;
+        IsDestroyed = true;
+        if (DestroyEvent != null)
+            DestroyEvent(this);
     }
 
-    void OnApplicationQuit()
+    private void OnApplicationQuit()
     {
-        if (!_IsApplicationQuited)
+        if (!_isApplicationQuited)
             CDebug.Log("OnApplicationQuit!");
 
-        _IsApplicationQuited = true;
+        _isApplicationQuited = true;
 
         if (ApplicationQuitEvent != null)
             ApplicationQuitEvent();

@@ -12,6 +12,7 @@
 using UnityEngine;
 using System.Collections;
 using Object = UnityEngine.Object;
+using CosmosEngine;
 
 /// <summary>
 /// 根據不同模式，從AssetBundle中獲取Asset或從Resources中獲取,一個橋接類
@@ -65,7 +66,7 @@ public class CAssetFileLoader : CBaseResourceLoader
 
             while (!bundleLoader.IsFinished)
             {
-                if (IsDisposed)   // 中途释放
+                if (IsReadyDisposed)   // 中途释放
                 {
                     bundleLoader.Release();
                     OnFinish(null);
@@ -80,6 +81,11 @@ public class CAssetFileLoader : CBaseResourceLoader
             if (AssetInBundleName == null)
             {
                 // 经过AddWatch调试，.mainAsset这个getter第一次执行时特别久，要做序列化
+                //AssetBundleRequest request = assetBundle.LoadAsync("", typeof(Object));// mainAsset
+                //while (!request.isDone)
+                //{
+                //    yield return null;
+                //}
                 try
                 {
                     CDebug.Assert(getAsset = assetBundle.mainAsset);
@@ -111,11 +117,17 @@ public class CAssetFileLoader : CBaseResourceLoader
             bundleLoader.Release();  // 释放Bundle(WebStream)
         }
 
-#if UNITY_EDITOR
-        if (getAsset != null)
-            CResourceLoadObjectDebugger.Create(getAsset.GetType().Name, Url, getAsset as UnityEngine.Object);
-#endif
+        if (Application.isEditor)
+        {
+            if (getAsset != null)
+                CResourceLoadObjectDebugger.Create(getAsset.GetType().Name, Url, getAsset as UnityEngine.Object);
+        }
 
+        if (getAsset != null)
+        {
+            // 更名~ 注明来源asset bundle 带有类型
+            getAsset.name = string.Format("{0}~{1}", getAsset, Url);
+        }
         OnFinish(getAsset);
     }
 
@@ -130,6 +142,9 @@ public class CAssetFileLoader : CBaseResourceLoader
             }
             else
             {
+                //Object.DestroyObject(ResultObject as UnityEngine.Object);
+                
+                // Destroying GameObjects immediately is not permitted during physics trigger/contact, animation event callbacks or OnValidate. You must use Destroy instead.
                 Object.DestroyImmediate(ResultObject as UnityEngine.Object, true);
             }
 

@@ -58,6 +58,14 @@ public static class CExtensions
         t.localPosition = new Vector3(t.localPosition.x, t.localPosition.y, newZ);
     }
 
+    public static void SetLocalScale(this Transform t, Vector3 newScale)
+    {
+        t.localScale = newScale;
+    }
+    public static void SetLocalScaleZero(this Transform t)
+    {
+        t.localScale = Vector3.zero;
+    }
 	public static float GetPositionX(this Transform t)
 	{
 		return t.position.x;
@@ -73,6 +81,20 @@ public static class CExtensions
 		return t.position.z;
 	}
 
+    public static float GetLocalPositionX(this Transform t)
+    {
+        return t.localPosition.x;
+    }
+
+    public static float GetLocalPositionY(this Transform t)
+    {
+        return t.localPosition.y;
+    }
+
+    public static float GetLocalPositionZ(this Transform t)
+    {
+        return t.localPosition.z;
+    }
 	public static bool HasRigidbody(this GameObject gobj)
 	{
 		return (gobj.rigidbody != null);
@@ -92,7 +114,10 @@ public static class CExtensions
 	{
 		return new Vector2(vec.x, vec.y);
 	}
-
+    public static byte ToByte(this string val)
+    {
+        return string.IsNullOrEmpty(val) ? (byte)0 : Convert.ToByte(val);
+    }
 	public static int ToInt32(this string val)
 	{
 	    return string.IsNullOrEmpty(val) ? 0 : Convert.ToInt32(val);
@@ -120,7 +145,24 @@ public static class CExtensions
             if (arrElement == null)
                 ret = default(T);
             else
-                ret = (T)Convert.ChangeType(arrElement, typeof(T));
+            {
+                try
+                {
+           
+                        ret = (T) Convert.ChangeType(arrElement, typeof (T));
+                }
+                catch (Exception)
+                {
+                    if (arrElement is string && string.IsNullOrEmpty(arrElement as string))
+                        ret = default(T);
+                    else
+                    {
+                        CDebug.LogError("[Error get from object[],  '{0}' change to type {1}", arrElement, typeof (T));
+                        ret = default(T);
+                    }
+                }
+                
+            }
         }
         else
         {

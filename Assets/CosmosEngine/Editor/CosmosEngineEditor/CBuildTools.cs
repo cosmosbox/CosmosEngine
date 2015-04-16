@@ -10,6 +10,7 @@
 //------------------------------------------------------------------------------
 
 using System;
+using CosmosEngine;
 using UnityEngine;
 using UnityEditor;
 using System.Collections;
@@ -131,8 +132,10 @@ public partial class CBuildTools
 			BuildError("BuildAssetBundle: {0}", path);
 			return 0;
 		}
-        
-		string tmpPrefabPath = string.Format("Assets/{0}.prefab", asset.name);
+
+        var assetNameWithoutDir = asset.name.Replace("/", "").Replace("\\", ""); // 防止多重目录...
+        string tmpPrefabPath = string.Format("Assets/{0}.prefab", assetNameWithoutDir);  
+
 		PrefabType prefabType = PrefabUtility.GetPrefabType(asset);
 
 	    string relativePath = path;
@@ -144,29 +147,40 @@ public partial class CBuildTools
 	        var assetPath = AssetDatabase.GetAssetPath(asset);
 	        if (!string.IsNullOrEmpty(assetPath))  // Assets内的纹理
 	        {// Texutre不复制拷贝一份
-                _DoBuild(out crc, asset, path, relativePath, buildTarget);
+                _DoBuild(out crc, asset, null, path, relativePath, buildTarget);
 	        }
 	        else
 	        {
                 // 内存的图片~临时创建Asset, 纯正的图片， 使用Sprite吧
-                var tex = asset as Texture2D;
+                var memoryTexture = asset as Texture2D;
+	            var memTexName = memoryTexture.name;
 
-	            var tmpTexPath = "Assets/tmpTexture.png";
-                File.WriteAllBytes(tmpTexPath, tex.EncodeToPNG());
+	            var tmpTexPath = string.Format("Assets/Tex_{0}_{1}.png", memoryTexture.name, Path.GetRandomFileName());
+                File.WriteAllBytes(tmpTexPath, memoryTexture.EncodeToPNG());
 
                 AssetDatabase.ImportAsset(tmpTexPath, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
                 var importer = (TextureImporter)TextureImporter.GetAtPath(tmpTexPath);
 	            importer.textureType = TextureImporterType.Sprite;
 	            importer.maxTextureSize = 4096;
                 importer.mipmapEnabled = false;
-	            importer.textureFormat = TextureImporterFormat.AutomaticCompressed;
+	            importer.textureFormat = TextureImporterFormat.AutomaticTruecolor;
                 AssetDatabase.ImportAsset(tmpTexPath, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
 
-                asset = AssetDatabase.LoadAssetAtPath("Assets/tmpTexture.png", typeof(Texture));
-	            asset.name = tex.name;
-                _DoBuild(out crc, asset, path, relativePath, buildTarget);
+                asset = AssetDatabase.LoadAssetAtPath(tmpTexPath, typeof(Texture));
+	            try
+	            {
+                    asset.name = memTexName;
+
+                    _DoBuild(out crc, asset, null, path, relativePath, buildTarget);
+	            }
+	            catch (Exception e)
+	            {
+                    CDebug.LogException(e);
+	            }
 
                 File.Delete(tmpTexPath);
+                if (File.Exists(tmpTexPath + ".meta"))
+                    File.Delete(tmpTexPath + ".meta");
 	        }
 	    }
 		else if ((prefabType == PrefabType.None && AssetDatabase.GetAssetPath(asset) == string.Empty) ||
@@ -176,7 +190,7 @@ public partial class CBuildTools
 			Object tmpPrefab = PrefabUtility.CreatePrefab(tmpPrefabPath, (GameObject)tmpInsObj, ReplacePrefabOptions.ConnectToPrefab);
 			asset = tmpPrefab;
 
-            _DoBuild(out crc, asset, path, relativePath, buildTarget);
+            _DoBuild(out crc, asset, null, path, relativePath, buildTarget);
 
             GameObject.DestroyImmediate(tmpInsObj);
             AssetDatabase.DeleteAsset(tmpPrefabPath);
@@ -184,24 +198,38 @@ public partial class CBuildTools
 		else if (prefabType == PrefabType.PrefabInstance)
 		{
 		    var prefabParent = PrefabUtility.GetPrefabParent(asset);
-		    _DoBuild(out crc, prefabParent, path, relativePath, buildTarget);
+            _DoBuild(out crc, prefabParent, null, path, relativePath, buildTarget);
 		}
 		else
 		{
             //CDebug.LogError("[Wrong asse Type] {0}", asset.GetType());
-            _DoBuild(out crc, asset, path, relativePath, buildTarget);
+            _DoBuild(out crc, asset, null, path, relativePath, buildTarget);
 		}
 		return crc;
 	}
 
-    private static void _DoBuild(out uint crc, Object asset, string path, string relativePath, BuildTarget buildTarget)
+    private static void _DoBuild(out uint crc, Object asset, Object[] subAssets, string path, string relativePath, BuildTarget buildTarget)
     {
         if (BeforeBuildAssetBundleEvent != null)
             BeforeBuildAssetBundleEvent(asset, path, relativePath);
 
+        if (subAssets == null)
+        {
+            subAssets = new[] {asset};
+        }
+        else
+        {
+            var listSubAsset = new List<Object>(subAssets);
+            if (!listSubAsset.Contains(asset))
+            {
+                listSubAsset.Add(asset);
+            }
+            subAssets = listSubAsset.ToArray();
+        }
+
         BuildPipeline.BuildAssetBundle(
             asset,
-            null,
+            subAssets,
             path,
             out crc,
             BuildAssetBundleOptions.CollectDependencies | BuildAssetBundleOptions.CompleteAssets | BuildAssetBundleOptions.DeterministicAssetBundle,
@@ -375,7 +403,6 @@ public partial class CBuildTools
     {
         string path = GetBuildVersionTab();// MakeSureExportPath(VerCtrlInfo.VerFile, EditorUserBuildSettings.activeBuildTarget);
         CTabFile tabFile = new CTabFile();
-        tabFile.NewRow();
         tabFile.NewColumn("AssetPath");
         tabFile.NewColumn("AssetMD5");
         tabFile.NewColumn("AssetDateTime");
@@ -405,13 +432,13 @@ public partial class CBuildTools
             {
                 tabFile = CTabFile.LoadFromFile(verFile);
 
-                for (int i = 1; i < tabFile.GetHeight(); ++i)
+                foreach(CTabFile.RowInterator row in tabFile)
                 {
-                    BuildVersion[tabFile.GetString(i, "AssetPath")] =
+                    BuildVersion[row.GetString("AssetPath")] =
                         new BuildRecord(
-                            tabFile.GetString(i, "AssetMD5"),
-                            tabFile.GetString(i, "AssetDateTime"),
-                            tabFile.GetInteger(i, "ChangeCount"));
+                            row.GetString("AssetMD5"),
+                            row.GetString("AssetDateTime"),
+                            row.GetInteger("ChangeCount"));
                 }
             }
         }

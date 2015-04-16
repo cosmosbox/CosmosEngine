@@ -8,6 +8,8 @@
 //              https://github.com/mr-kelly/CosmosEngine
 //
 //------------------------------------------------------------------------------
+
+using CosmosEngine;
 using UnityEngine;
 using System;
 using System.Collections;
@@ -198,9 +200,10 @@ public class CUIModule : ICModule
         {
             uiState.UIWindow.gameObject.SetActive(false);
 
+            uiState.UIWindow.OnClose();
+
             if (OnCloseEvent != null)
                 OnCloseEvent(uiState.UIWindow);
-            uiState.UIWindow.OnClose();
 
             if (!uiState.IsStaticUI)
             {
@@ -269,6 +272,12 @@ public class CUIModule : ICModule
             return uiState.UIWindow;
 
         return null;
+    }
+
+    public bool IsOpen<T>() where T : CUIController
+    {
+        string uiName = typeof(T).Name.Remove(0, 3); // 去掉"CUI"
+        return IsOpen(uiName);
     }
 
     public bool IsOpen(string name)
@@ -427,10 +436,11 @@ public class CUIModule : ICModule
 
             uiBase.gameObject.SetActive(true);
 
+            uiBase.OnOpen(args);
+
             if (OnOpenEvent != null)
                 OnOpenEvent(uiBase);
 
-            uiBase.OnOpen(args);
         };
 
         doOpenAction();
@@ -439,10 +449,9 @@ public class CUIModule : ICModule
 
     void InitWindow(CUILoadState uiState, CUIController uiBase, bool open, params object[] args)
     {
+        uiBase.OnInit();
         if (OnInitEvent != null)
             OnInitEvent(uiBase);
-        uiBase.OnInit();
-
         if (open)
         {
             OnOpen(uiState, args);
