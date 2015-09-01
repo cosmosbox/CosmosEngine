@@ -17,6 +17,9 @@ using System.Collections.Generic;
 public class CAssetBundleLoader : CBaseResourceLoader
 {
     public delegate void CAssetBundleLoaderDelegate(bool isOk, AssetBundle ab);
+    
+    public static Action<string> NewAssetBundleLoaderEvent;
+    public static Action<CAssetBundleLoader> AssetBundlerLoaderErrorEvent;
 
     private CAssetBundleParser BundleParser;
     //private bool UnloadAllAssets; // Dispose时赋值
@@ -27,10 +30,12 @@ public class CAssetBundleLoader : CBaseResourceLoader
 
     string RelativeResourceUrl;
     string FullUrl;
-
     protected override void Init(string url)
     {
         base.Init(url);
+        
+        if (NewAssetBundleLoaderEvent != null)
+            NewAssetBundleLoaderEvent(url);
 
         RelativeResourceUrl = url;
         if (CResourceModule.GetResourceFullPath(url, out FullUrl))
@@ -45,6 +50,7 @@ public class CAssetBundleLoader : CBaseResourceLoader
             OnFinish(null);
         }
     }
+
     public static CAssetBundleLoader Load(string url, CAssetBundleLoaderDelegate callback = null)
     {
         CLoaderDelgate newCallback = null;
@@ -66,8 +72,14 @@ public class CAssetBundleLoader : CBaseResourceLoader
             Progress = wwwLoader.Progress / 2f;  // 最多50%， 要算上Parser的嘛
             yield return null;
         }
-        if (wwwLoader.IsError)
+        Progress = 1/2f;
+
+        if (!wwwLoader.IsOk)
         {
+            if (AssetBundlerLoaderErrorEvent != null)
+            {
+                AssetBundlerLoaderErrorEvent(this);
+            }
             CDebug.LogError("[CAssetBundleLoader]Error Load AssetBundle: {0}", relativeUrl);
             OnFinish(null);
             wwwLoader.Release();
@@ -90,9 +102,10 @@ public class CAssetBundleLoader : CBaseResourceLoader
                     OnFinish(null);
                     yield break;
                 }
-                Progress = BundleParser.Progress + 1/2f;  // 最多50%， 要算上WWWLoader的嘛
+                Progress = BundleParser.Progress / 2f + 1/2f;  // 最多50%， 要算上WWWLoader的嘛
                 yield return null;
             }
+            Progress = 1f;
             var assetBundle = BundleParser.Bundle;
             if (assetBundle == null)
                 CDebug.LogError("WWW.assetBundle is NULL: {0}", FullUrl);
@@ -112,6 +125,19 @@ public class CAssetBundleLoader : CBaseResourceLoader
 
         if (BundleParser != null)
             BundleParser.Dispose(false);
+    }
+
+    public override void Release()
+    {
+
+#if UNITY_EDITOR
+        if (Url.Contains("Arial"))
+        {
+            CDebug.LogError("要释放Arial字体！！错啦！！:{0}", Url);
+            UnityEditor.EditorApplication.isPaused = true;
+        }
+#endif
+        base.Release();
     }
 
     /// 舊的tips~忽略

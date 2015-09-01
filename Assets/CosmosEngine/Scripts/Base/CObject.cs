@@ -1,8 +1,9 @@
-﻿using UnityEngine;
+﻿//#define COBJECT_DEBUGGER
+
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System;
-using System.Reflection;
 using CosmosEngine;
 
 /// <summary>
@@ -15,11 +16,12 @@ public class CObject : IDisposable
         this.StartWatch();
     }
 
-    public void Dispose()
+    public virtual void Dispose()
     {
         this.StopWatch();
     }
 }
+
 /// <summary>
 /// 手动打开或关闭，用于任何object
 /// </summary>
@@ -39,7 +41,7 @@ public static class CObjectDebuggerExtensions
 /// <summary>
 /// 对C#非MonoBehaviour对象以GameObject形式表现，方便调试
 /// </summary>
-public class CObjectDebugger : MonoBehaviour
+public class CObjectDebugger : CBehaviour
 {
     public static Dictionary<object, CObjectDebugger> Cache = new Dictionary<object, CObjectDebugger>();
     public static IEnumerator GlobalDebugCoroutine;  // 不用Update，用这个~
@@ -51,13 +53,15 @@ public class CObjectDebugger : MonoBehaviour
 
     public static void StopWatch(object obj)
     {
+#if COBJECT_DEBUGGER
+        if (!CDebug.IsEditor || !Application.isPlaying || IsApplicationQuited)
+            return;
+
         CAsync.AddMainThreadCall(() =>
         {
 
             try
             {
-                if (!CDebug.IsEditor)
-                    return;
 
                 CObjectDebugger debuger;
                 if (CObjectDebugger.Cache.TryGetValue(obj, out debuger))
@@ -71,16 +75,19 @@ public class CObjectDebugger : MonoBehaviour
             }
  
         });
+#endif
     }
 
     public static void StartWatch(object obj)
     {
+#if COBJECT_DEBUGGER
+        if (!CDebug.IsEditor || !Application.isPlaying || IsApplicationQuited)
+            return;
+
         CAsync.AddMainThreadCall(() =>
         {
             try
             {
-                if (!CDebug.IsEditor)
-                    return;
 
                 var newDebugger = new GameObject(string.Format("{0}-{1}", obj.ToString(), obj.GetType())).AddComponent<CObjectDebugger>();
                 newDebugger.WatchObject = obj;
@@ -95,6 +102,7 @@ public class CObjectDebugger : MonoBehaviour
             }
 
         });
+#endif
     }
 
     void Awake()
@@ -125,7 +133,13 @@ public class CObjectDebugger : MonoBehaviour
                 yield return null;
                 continue;
             }
-            var copyCache = new Dictionary<object, CObjectDebugger>(Cache);
+
+            var copyCache = new Dictionary<object, CObjectDebugger>();
+            foreach (var kv in Cache)  // copy
+            {
+                copyCache[kv.Key] = kv.Value;
+            }
+
             foreach (var kv in copyCache)
             {
                 var debugger = kv.Value;
@@ -135,7 +149,8 @@ public class CObjectDebugger : MonoBehaviour
                 }
                 else
                 {
-                    if (debugger._cacheGameObject.name != debugger.WatchObject.ToString())
+
+                    if (!debugger.IsDestroyed && debugger._cacheGameObject.name != debugger.WatchObject.ToString())
                     {
                         debugger._cacheGameObject.name = debugger.WatchObject.ToString();
                     }

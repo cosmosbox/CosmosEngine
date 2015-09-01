@@ -22,13 +22,11 @@ public class CActionRecords : CBehaviour
         {
             if (_instance == null)
             {
-#if UNITY_EDITOR
-                if (IsApplicationQuited || !UnityEditor.EditorApplication.isPlaying)
+                if (IsApplicationQuited || !Application.isPlaying)
                 {
                     CDebug.LogErrorWithStack("[错误埋点]Error Instance Action Recods!  请查看堆栈, 尽快修复！！！");
                     return null;
                 }
-#endif
                 _instance = (new GameObject("__ActionRecorder__")).AddComponent<CActionRecords>();
                 _instance.Init();
             }
@@ -177,9 +175,10 @@ public class CActionRecords : CBehaviour
         return IsApplicationQuited ? null : Instance.StartCoroutine(CoTriggerEventFuncs(type, subType, extraArg));
     }
 
-    public static Coroutine Event(Enum type, int count = -1)
+    public static Coroutine Event(Enum type, int extraArg = -1)
     {
-        return Event(type, null, count);
+        var subType = extraArg == -1 ? null : extraArg.ToString();
+        return Event(type, subType, extraArg);
     }
     private static string MakeKey(Enum type, string subType)
     {

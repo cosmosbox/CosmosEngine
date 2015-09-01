@@ -11,6 +11,7 @@
 
 using System.Text.RegularExpressions;
 using CosmosEngine;
+using SimpleJson;
 using UnityEngine;
 using System;
 using System.Collections;
@@ -26,7 +27,7 @@ public class CGameSettings : ICModule
 
     public Dictionary<Type, Dictionary<string, CBaseInfo>> SettingInfos = new Dictionary<Type, Dictionary<string, CBaseInfo>>();
 
-    private Dictionary<Type, Func<string>[]> LazyLoad = new Dictionary<Type, Func<string>[]>();
+    public Dictionary<Type, Func<string>[]> LazyLoad = new Dictionary<Type, Func<string>[]>();
 
     public Action InitAction; // Init時調用的委託、函數指針
 
@@ -38,8 +39,8 @@ public class CGameSettings : ICModule
         if (this.InitAction == null)
             CDebug.LogError("GameSettings沒有定義初始化行為！！！");
         else
-            this.InitAction();
-        yield break;
+            InitAction();
+        yield return new WaitForEndOfFrame();
     }
 
     public IEnumerator UnInit()
@@ -204,7 +205,7 @@ public class CGameSettings : ICModule
     }
 }
 
-public partial class CBaseInfo : CObject, ICloneable
+public partial class CBaseInfo : ICloneable
 {
     // 把Fields缓存起来，避开反射的GetFields性能问题  Type => ( FieldName -> Type )
     private static readonly Dictionary<Type, LinkedList<FieldInfo>> CacheTypeFields = new Dictionary<Type, LinkedList<FieldInfo>>();
@@ -274,9 +275,8 @@ public partial class CBaseInfo : CObject, ICloneable
             var allFields = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             foreach (FieldInfo field in allFields)
             {
-                if (field.Name.StartsWith("_"))  // 筛掉
+                if (field.Name.StartsWith("_") || field.IsInitOnly)  // 筛掉_ 和 readonly
                     continue;
-
                 if (!tabFile.HasColumn(field.Name))
                 {
                     if (Debug.isDebugBuild)
@@ -304,7 +304,7 @@ public partial class CBaseInfo : CObject, ICloneable
             }
             else if (fieldType == typeof(string))
             {
-                value = tabFile.GetString(row, fieldName);
+                value = tabFile.GetString(row, fieldName).Replace("\\n", "\n");
             }
             else if (fieldType == typeof(float))
             {
@@ -393,6 +393,11 @@ public partial class CBaseInfo : CObject, ICloneable
                 }
                 else
                     value = new List<List<int>>();
+            }
+            else if (fieldType == typeof(JsonObject))
+            {
+                string sz = tabFile.GetString(row, fieldName);
+                value = string.IsNullOrEmpty(sz) ? new JsonObject() : CTool.SplitToJson(sz);
             }
             else
             {

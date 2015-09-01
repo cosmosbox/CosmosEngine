@@ -22,13 +22,27 @@ public class CWWWLoader : CBaseResourceLoader
 {
     // 前几项用于监控器
     private static IEnumerator CachedWWWLoaderMonitorCoroutine; // 专门监控WWW的协程
-    const int MAX_WWW_COUNT = 5;
+    const int MAX_WWW_COUNT = 15; // 同时进行的最大Www加载个数，超过的排队等待
     private static int WWWLoadingCount = 0; // 有多少个WWW正在运作, 有上限的
     private static readonly Stack<CWWWLoader> WWWLoadersStack = new Stack<CWWWLoader>();  // WWWLoader的加载是后进先出! 有一个协程全局自我管理. 后来涌入的优先加载！
 
     public static event Action<string> WWWFinishCallback;
 
+    public float BeginLoadTime;
+    public float FinishLoadTime;
     public WWW Www;
+    public int Size { get { return Www.size; } }
+
+    public float LoadSpeed
+    {
+        get
+        {
+            if (!IsFinished)
+                return 0;
+            return Size/(FinishLoadTime - BeginLoadTime);
+        }
+    }
+    //public int DownloadedSize { get { return Www != null ? Www.bytesDownloaded : 0; } }
 
     /// <summary>
     /// Use this to directly load WWW by Callback or Coroutine, pass a full URL.
@@ -70,7 +84,7 @@ public class CWWWLoader : CBaseResourceLoader
 
         // 潜规则：不用LoadFromCache~它只能用在.assetBundle
         Www = new WWW(url);
-
+        BeginLoadTime = Time.time;
         WWWLoadingCount++;
 
         //设置AssetBundle解压缩线程的优先级
@@ -92,6 +106,11 @@ public class CWWWLoader : CBaseResourceLoader
         }
         if (!string.IsNullOrEmpty(Www.error))
         {
+            if (Application.platform == RuntimePlatform.Android)
+            {
+                // TODO: Android下的错误可能是因为文件不存在!
+            }
+
             string fileProtocol = CResourceModule.GetFileProtocol();
             if (url.StartsWith(fileProtocol))
             {
@@ -99,7 +118,7 @@ public class CWWWLoader : CBaseResourceLoader
                 CDebug.LogError("File {0} Exist State: {1}", fileRealPath, System.IO.File.Exists(fileRealPath));
 
             }
-            CDebug.LogError("[CWWWLoader:Error]" + Www.error + " " + url);
+            CDebug.LogError("[CWWWLoader:Error]{0} {1}", Www.error, url);
 
             OnFinish(null);
             yield break;
@@ -128,6 +147,12 @@ public class CWWWLoader : CBaseResourceLoader
                 yield return null;
             }
         }
+    }
+
+    protected override void OnFinish(object resultObj)
+    {
+        FinishLoadTime = Time.time;
+        base.OnFinish(resultObj);
     }
 
     protected override void DoDispose()

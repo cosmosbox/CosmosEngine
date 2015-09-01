@@ -17,6 +17,15 @@ using System.Collections.Generic;
 using System.IO;
 using Object = UnityEngine.Object;
 
+public enum CResourceQuality
+{
+    Sd = 2,
+
+    Hd = 1,
+    
+    Ld = 4,
+}
+
 public enum CResourceManagerPathType
 {
     StreamingAssetsPathPriority, // 忽略PersitentDataPath
@@ -31,7 +40,12 @@ public class CResourceModule : MonoBehaviour, ICModule
         ShowTime,
         ShowDetail,
     }
+    public static CResourceQuality Quality = CResourceQuality.Sd;
 
+    public static float TextureScale
+    {
+        get { return 1f/(float)Quality; }
+    }
     private static CResourceModule _Instance;
     public static CResourceModule Instance
     {
@@ -50,23 +64,30 @@ public class CResourceModule : MonoBehaviour, ICModule
     }
     public static bool LoadByQueue = false;
     public static int LogLevel = (int)LoadingLogLevel.None;
-    public static string BuildPlatformName { get { return GetBuildPlatformName(); } }
+    public static string BuildPlatformName { get { return GetBuildPlatformName(); } }  // ex: IOS, Android, AndroidLD
     public static string FileProtocol { get { return GetFileProtocol(); } }  // for WWW...with file:///xxx
 
     /// <summary>
     /// Product Folder's Relative Path   -  Default: ../Product,   which means Assets/../Product
     /// </summary>
-    public static string ProductRelPath { get { return CCosmosEngine.GetConfig("ProductRelPath"); } }
+    public static string ProductRelPath { get { return CCosmosEngine.GetConfig(CCosmosEngineDefaultConfig.ProductRelPath); } }
 
     /// <summary>
     /// Product Folder Full Path , Default: C:\xxxxx\xxxx\../Product
     /// </summary>
-    public static string ProductFullPath { get { return Path.Combine(Application.dataPath, ProductRelPath); } }
+    public static string EditorProductFullPath { get { return Path.Combine(Application.dataPath, ProductRelPath); } }
 
     public static string ResourcesPath;
     public static string ResourcesPathWithoutFileProtocol;
     public static string ApplicationPath;
-    public static string DocumentResourcesPathWithoutFileProtocol;
+
+    public static string DocumentResourcesPathWithoutFileProtocol 
+    {
+        get
+        {
+            return string.Format("{0}/{1}/{2}/", GetAppDataPath(), ResourceDirName, GetBuildPlatformName());  // 各平台通用
+        }
+    }
     public static string DocumentResourcesPath;
 
     public static CResourceManagerPathType ResourcePathType = CResourceManagerPathType.PersistentDataPathPriority;  // 是否優先找下載的資源?還是app本身資源優先
@@ -170,8 +191,36 @@ public class CResourceModule : MonoBehaviour, ICModule
         {
             return false;
         }
-
+        // Windows/Edtiro平台下，进行大小敏感判断
+        if (Application.isEditor)
+        {
+            var result = FileExistsWithDifferentCase(ResourcesPathWithoutFileProtocol + url);
+            if (!result)
+            {
+                CDebug.LogError("[大小写敏感]发现一个资源 {0}，大小写出现问题，在Windows可以读取，手机不行，请改表修改！", url);
+            }
+        }
         return true;
+    }
+
+    /// <summary>
+    /// 大小写敏感地进行文件判断, Windows Only
+    /// </summary>
+    /// <param name="filePath"></param>
+    /// <returns></returns>
+    static bool FileExistsWithDifferentCase(string filePath)
+    {
+        if (File.Exists(filePath))
+        {
+            string directory = Path.GetDirectoryName(filePath);
+            string fileTitle = Path.GetFileName(filePath);
+            string[] files = Directory.GetFiles(directory, fileTitle);
+            var realFilePath = files[0].Replace("\\", "/");
+            filePath = filePath.Replace("\\", "/");
+
+            return String.CompareOrdinal(realFilePath, filePath) == 0;
+        }
+        return false;
     }
 
     public static bool TryGetDocumentResourceUrl(string url, out string newUrl)
@@ -201,6 +250,13 @@ public class CResourceModule : MonoBehaviour, ICModule
     {
         InitResourcePath();
 
+        if (Debug.isDebugBuild)
+        {
+            CDebug.Log("ResourceManager ApplicationPath: {0}", ApplicationPath);
+            CDebug.Log("ResourceManager ResourcesPath: {0}", ResourcesPath);
+            CDebug.Log("ResourceManager DocumentResourcesPath: {0}", DocumentResourcesPath);
+            CDebug.Log("================================================================================");
+        }
         yield break;
     }
 
@@ -209,6 +265,8 @@ public class CResourceModule : MonoBehaviour, ICModule
         yield break;
     }
 
+
+    private static string _unityEditorEditorUserBuildSettingsActiveBuildTarget;
     /// <summary>
     /// UnityEditor.EditorUserBuildSettings.activeBuildTarget, Can Run in any platform~
     /// </summary>
@@ -216,6 +274,10 @@ public class CResourceModule : MonoBehaviour, ICModule
     {
         get
         {
+            if (Application.isPlaying && !string.IsNullOrEmpty(_unityEditorEditorUserBuildSettingsActiveBuildTarget))
+            {
+                return _unityEditorEditorUserBuildSettingsActiveBuildTarget;
+            }
             var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
             foreach (var a in assemblies)
             {
@@ -229,6 +291,7 @@ public class CResourceModule : MonoBehaviour, ICModule
                     var p = lockType.GetProperty("activeBuildTarget");
 
                     var em = p.GetGetMethod().Invoke(null, new object[] { }).ToString();
+                    _unityEditorEditorUserBuildSettingsActiveBuildTarget = em;
                     return em;
                 }
 
@@ -242,51 +305,48 @@ public class CResourceModule : MonoBehaviour, ICModule
     /// Here, get Platform name that represent the AssetBundles Folder.
     /// </summary>
     /// <returns>Platform folder Name</returns>
-    public static string GetBuildPlatformName()
+    private static string GetBuildPlatformName()
     {
         string buildPlatformName = "Win32"; // default
-        if (Application.isEditor)
-        {
-            // 根据编辑器的当前编译环境, 来确定读取哪个资源目录
-            // 因为美术库是根据编译环境来编译资源的，这样可以在Unity编辑器上， 快速验证其资源是否正确再放到手机上
-            var buildTarget = UnityEditor_EditorUserBuildSettings_activeBuildTarget;
-            switch (buildTarget)
-            {
-                case "StandaloneWindows":
-                case "StandaloneWindows64":
-                    buildPlatformName = "Win32";
-                    break;
-                case "Android":
-                    buildPlatformName = "Android";
-                    break;
-                case "iPhone":
-                    buildPlatformName = "IOS";
-                    break;
-                default:
-                    CDebug.Assert(false);
-                    break;
-            }
-        }
-        else
-        {
-            switch (Application.platform)
-            {
-                case RuntimePlatform.Android:
-                    buildPlatformName = "Android";
-                    break;
-                case RuntimePlatform.IPhonePlayer:
-                    buildPlatformName = "IOS";
-                    break;
-                case RuntimePlatform.WindowsPlayer:
-                case RuntimePlatform.WindowsWebPlayer:
-                    buildPlatformName = "Win32";
-                    break;
-                default:
-                    CDebug.Assert(false);
-                    break;
-            }
-        }
 
+#if UNITY_EDITOR
+        var buildTarget = UnityEditor_EditorUserBuildSettings_activeBuildTarget; //UnityEditor.EditorUserBuildSettings.activeBuildTarget;
+        switch (buildTarget)
+        {
+            case "StandaloneWindows":// UnityEditor.BuildTarget.StandaloneWindows:
+            case "StandaloneWindows64":// UnityEditor.BuildTarget.StandaloneWindows64:
+                buildPlatformName = "Win32";
+                break;
+            case "Android":// UnityEditor.BuildTarget.Android:
+                buildPlatformName = "Android";
+                break;
+            case "iPhone":// UnityEditor.BuildTarget.iPhone:
+                buildPlatformName = "IOS";
+                break;
+            default:
+                CDebug.Assert(false);
+                break;
+        }
+#else
+        switch (Application.platform)
+        {
+            case RuntimePlatform.Android:
+                buildPlatformName = "Android";
+                break;
+            case RuntimePlatform.IPhonePlayer:
+                buildPlatformName = "IOS";
+                break;
+            case RuntimePlatform.WindowsPlayer:
+            case RuntimePlatform.WindowsWebPlayer:
+                buildPlatformName = "Win32";
+                break;
+            default:
+                CDebug.Assert(false);
+                break;
+        }
+#endif
+        if (Quality != CResourceQuality.Sd)  // SD no need add
+            buildPlatformName += Quality.ToString().ToUpper();
         return buildPlatformName;
     }
 
@@ -303,17 +363,36 @@ public class CResourceModule : MonoBehaviour, ICModule
         return fileProtocol;
     }
 
+    public static string ResourceDirName
+    {
+        get
+        {
+            return CCosmosEngine.GetConfig(CCosmosEngineDefaultConfig.BundlesFolderName);
+        }
+    }
+
+    /// <summary>
+    /// Unity Editor load AssetBundle directly from the Asset Bundle Path, 
+    /// whth file:// protocol
+    /// </summary>
+    public static string EditorAssetBundlePath
+    {
+        get
+        {
+            string editorAssetBundlePath = Path.Combine(Application.dataPath, CCosmosEngine.GetConfig(CCosmosEngineDefaultConfig.AssetBundleBuildRelPath));  // for editoronly
+
+            return editorAssetBundlePath;
+        }
+    }
+
     /// <summary>
     /// Initialize the path of AssetBundles store place ( Maybe in PersitentDataPath or StreamingAssetsPath )
     /// </summary>
     /// <returns></returns>
     public static void InitResourcePath()
     {
-        string productPath = ProductFullPath;
-        string assetBundlePath = Path.Combine(Application.dataPath, CCosmosEngine.GetConfig("AssetBundleRelPath"));
-        string resourceDirName = Path.GetFileName(CCosmosEngine.GetConfig("AssetBundleRelPath"));
-
-        DocumentResourcesPathWithoutFileProtocol = string.Format("{0}/{1}/{2}/", GetAppDataPath(), resourceDirName, GetBuildPlatformName());  // 各平台通用
+        string editorProductPath = EditorProductFullPath;
+        
         DocumentResourcesPath = FileProtocol + DocumentResourcesPathWithoutFileProtocol;
 
         switch (Application.platform)
@@ -321,9 +400,9 @@ public class CResourceModule : MonoBehaviour, ICModule
             case RuntimePlatform.WindowsEditor:
             case RuntimePlatform.OSXEditor:
                 {
-                    ApplicationPath = string.Format("{0}{1}/", GetFileProtocol(), productPath);
-                    ResourcesPath = GetFileProtocol() + assetBundlePath + "/" + BuildPlatformName + "/";
-                    ResourcesPathWithoutFileProtocol = assetBundlePath + "/" + BuildPlatformName + "/";
+                    ApplicationPath = string.Format("{0}{1}/", GetFileProtocol(), editorProductPath);
+                    ResourcesPath = GetFileProtocol() + EditorAssetBundlePath + "/" + BuildPlatformName + "/";
+                    ResourcesPathWithoutFileProtocol = EditorAssetBundlePath + "/" + BuildPlatformName + "/";
 
                 }
                 break;
@@ -333,24 +412,23 @@ public class CResourceModule : MonoBehaviour, ICModule
                     string path = Application.dataPath.Replace('\\', '/');
                     path = path.Substring(0, path.LastIndexOf('/') + 1);
                     ApplicationPath = string.Format("{0}{1}/", GetFileProtocol(), path);
-                    ResourcesPath = string.Format("{0}{1}{2}/{3}/", GetFileProtocol(), path, resourceDirName, GetBuildPlatformName());
-                    ResourcesPathWithoutFileProtocol = string.Format("{0}{1}/{2}/", path, resourceDirName, GetBuildPlatformName());
-
+                    ResourcesPath = string.Format("{0}{1}/{2}/{3}/", GetFileProtocol(), path, ResourceDirName, GetBuildPlatformName());
+                    ResourcesPathWithoutFileProtocol = string.Format("{0}/{1}/{2}/", path, ResourceDirName, GetBuildPlatformName());
                 }
                 break;
             case RuntimePlatform.Android:
                 {
-                    ApplicationPath = string.Concat("jar:", GetFileProtocol(), Application.dataPath, "!/assets/");
+                    ApplicationPath = string.Concat("jar:", GetFileProtocol(), Application.dataPath, string.Format("!/assets/{0}/", ResourceDirName));
 
                     ResourcesPath = string.Concat(ApplicationPath, GetBuildPlatformName(), "/");
-                    ResourcesPathWithoutFileProtocol = string.Concat(Application.dataPath, "!/assets/", GetBuildPlatformName() + "/");  // 注意，StramingAsset在Android平台中，是在壓縮的apk里，不做文件檢查
+                    ResourcesPathWithoutFileProtocol = string.Concat(Application.dataPath, "!/assets/" + ResourceDirName + "/", GetBuildPlatformName() + "/");  // 注意，StramingAsset在Android平台中，是在壓縮的apk里，不做文件檢查
                 }
                 break;
             case RuntimePlatform.IPhonePlayer:
                 {
-                    ApplicationPath = System.Uri.EscapeUriString(GetFileProtocol() + Application.streamingAssetsPath + "/");  // MacOSX下，带空格的文件夹，空格字符需要转义成%20
+                    ApplicationPath = System.Uri.EscapeUriString(GetFileProtocol() + Application.streamingAssetsPath + "/" + ResourceDirName + "/");  // MacOSX下，带空格的文件夹，空格字符需要转义成%20
                     ResourcesPath = string.Format("{0}{1}/", ApplicationPath, GetBuildPlatformName());  // only iPhone need to Escape the fucking Url!!! other platform works without it!!! Keng Die!
-                    ResourcesPathWithoutFileProtocol = Application.streamingAssetsPath + "/" + GetBuildPlatformName() + "/";
+                    ResourcesPathWithoutFileProtocol = Application.streamingAssetsPath + "/" + ResourceDirName + "/" + GetBuildPlatformName() + "/";
                 }
                 break;
             default:
@@ -358,14 +436,6 @@ public class CResourceModule : MonoBehaviour, ICModule
                     CDebug.Assert(false);
                 }
                 break;
-        }
-
-        if (Debug.isDebugBuild)
-        {
-            CDebug.Log("ResourceManager ApplicationPath: {0}", ApplicationPath);
-            CDebug.Log("ResourceManager ResourcesPath: {0}", ResourcesPath);
-            CDebug.Log("ResourceManager DocumentResourcesPath: {0}", DocumentResourcesPath);
-            CDebug.Log("================================================================================");
         }
     }
 

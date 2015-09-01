@@ -8,9 +8,9 @@ namespace CosmosTable
     /// Write the TabFile!
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public class TabFileWriter<T> : IDisposable where T : TabRow, new()
+    public class TabFileWriter<T> : IDisposable where T : TableRowInfo, new()
     {
-        protected readonly TableFile<T> TabFile;
+        public readonly TableFile<T> TabFile;
 
         public TabFileWriter()
         {
@@ -20,17 +20,7 @@ namespace CosmosTable
 
         void CheckHeaders()
         {
-            // 确保表头！
-            foreach (var prop in TabFile.TabProperties)
-            {
-                HeaderInfo headerInfo;
-                if (!TabFile.Headers.TryGetValue(prop.Name, out headerInfo))
-                {
-                    NewColumn(prop.Name);
-                }
-            }
-
-            foreach (var field in TabFile.TabFields)
+            foreach (var field in TabFile.AutoTabFields)
             {
                 HeaderInfo headerInfo;
                 if (!TabFile.Headers.TryGetValue(field.Name, out headerInfo))
@@ -43,12 +33,11 @@ namespace CosmosTable
         public TabFileWriter(TableFile<T> tabFile)
         {
             TabFile = tabFile;
+            CheckHeaders();
         }
 
-        // 将当前保存成文件
-        public bool Save(string fileName)
+        public override string ToString()
         {
-            bool result = false;
             StringBuilder sb = new StringBuilder();
 
             foreach (var header in TabFile.Headers.Values)
@@ -63,13 +52,7 @@ namespace CosmosTable
             foreach (var kv in TabFile.Rows)
             {
                 var rowT = kv.Value;
-                foreach (var prop in TabFile.TabProperties)
-                {
-                    var retVal = prop.GetGetMethod().Invoke(rowT, new object[]{});
-                    sb.Append(retVal);
-                    sb.Append('\t');
-                }
-                foreach (var field in TabFile.TabFields)
+                foreach (var field in TabFile.AutoTabFields)
                 {
                     var retVal = field.GetValue(rowT);
                     sb.Append(retVal);
@@ -77,26 +60,35 @@ namespace CosmosTable
                 }
                 sb.Append("\r\n");
             }
+            return sb.ToString();
+        }
 
-            try
+        // 将当前保存成文件
+        public bool Save(string fileName)
+        {
+            lock (this)
             {
-                //using (FileStream fs = )
+                bool result = false;
+                try
                 {
-                    using (StreamWriter sw = new StreamWriter(new FileStream(fileName, FileMode.Create), System.Text.Encoding.UTF8))
+                    //using (FileStream fs = )
                     {
-                        sw.Write(sb);
+                        using (StreamWriter sw = new StreamWriter(new FileStream(fileName, FileMode.Create), System.Text.Encoding.UTF8))
+                        {
+                            sw.Write(ToString());
 
-                        result = true;
+                            result = true;
+                        }
                     }
                 }
-            }
-            catch (IOException e)
-            {
-				result = false;
-                throw new Exception("可能文件正在被Excel打开?" + e.Message);
-            }
+                catch (IOException e)
+                {
+                    result = false;
+                    throw new Exception("可能文件正在被Excel打开?" + e.Message);
+                }
 
-            return result;
+                return result;
+            }
         }
 
         public T NewRow()
@@ -109,12 +101,16 @@ namespace CosmosTable
             return newRow;
         }
 
+        public bool RemoveRow(int row)
+        {
+            return TabFile.Rows.Remove(row);
+        }
         public T GetRow(int row)
         {
-            T rowT;
+            object rowT;
             if (TabFile.Rows.TryGetValue(row, out rowT))
             {
-                return rowT;
+                return (T)rowT;
             }
 
             return null;

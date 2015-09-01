@@ -44,17 +44,12 @@ namespace CosmosEngine.Editor
             CheckConfigFile();
         }
 
-        enum CUIBridgeType
-        {
-            NO_UI,
-            NGUI,
-        }
         static string ConfFilePath = "Assets/Resources/CEngineConfig.txt";
 
         // 默認的配置文件內容
         static string[][] DefaultConfigFileContent = new string[][]{
         new string[] {"ProductRelPath", "BuildProduct/", ""},
-        new string[] {"AssetBundleRelPath", "StreamingAssets/", "The Relative path to build assetbundles"},
+        new string[] {"AssetBundleBuildRelPath", "StreamingAssets/", "The Relative path to build assetbundles"},
        new string[] { "AssetBundleExt", ".unity3d", "Asset bundle file extension"},
        new string[] { "IsLoadAssetBundle", "1", "Asset bundle or in resources?"},
     };

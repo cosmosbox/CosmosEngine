@@ -11,15 +11,55 @@
 using System;
 using System.IO;
 using System.Diagnostics;
+using System.Text;
+using System.Threading;
 using UnityEngine;
+
+public enum CLogLevel
+{
+    All = 0,
+    Trace,
+    Debug,
+    Info, // Info, default
+    Warning,
+    Error,
+}
 
 /// Frequent Used,
 /// A File logger + Debug Tools
 public class CDebug
 {
-    public static bool IsLogFile = false; // 是否輸出到日誌
+    public static CLogLevel LogLevel = CLogLevel.Info;
+    static event Application.LogCallback LogCallbackEvent;
+    private static bool _hasRegisterLogCallback = false;
 
-    static readonly bool IsDebugBuild = false;
+    /// <summary>
+    /// 第一次使用时注册，之所以不放到静态构造器，因为多线程问题
+    /// </summary>
+    /// <param name="callback"></param>
+    public static void AddLogCallback(Application.LogCallback callback)
+    {
+        if (!_hasRegisterLogCallback)
+        {
+            Application.RegisterLogCallbackThreaded(OnLogCallback);
+            _hasRegisterLogCallback = true;
+        }
+        LogCallbackEvent += callback;
+
+    }
+    public static void RemoveLogCallback(Application.LogCallback callback)
+    {
+        if (!_hasRegisterLogCallback)
+        {
+            Application.RegisterLogCallbackThreaded(OnLogCallback);
+            _hasRegisterLogCallback = true;
+        }
+        LogCallbackEvent -= callback;
+
+    }
+
+
+    //static readonly bool IsDebugBuild = false;
     public static readonly bool IsEditor = false;
 
     public static event Action<string> LogErrorEvent;
@@ -30,7 +70,7 @@ public class CDebug
 
         try
         {
-            IsDebugBuild = UnityEngine.Debug.isDebugBuild;
+            //IsDebugBuild = UnityEngine.Debug.isDebugBuild;
             IsEditor = Application.isEditor;
         }
         catch (Exception e)
@@ -40,11 +80,55 @@ public class CDebug
         }
     }
 
-    enum LogType
+    private static bool _isLogFile = false; // 是否輸出到日誌，跨线程
+    public static bool IsLogFile
     {
-        NORMAL,
-        WARNING,
-        ERROR,
+        get { return _isLogFile; }
+        set
+        {
+            _isLogFile = value;
+            if (_isLogFile)
+            {
+                AddLogCallback(DefaultCallbackLogFile);
+            }
+            else
+            {
+                RemoveLogCallback(DefaultCallbackLogFile);
+            }
+
+        }
+    }
+
+    private static void DefaultCallbackLogFile(string condition, string stacktrace, UnityEngine.LogType type)
+    {
+        if (type == LogType.Log)
+            LogToFile(condition + "\n\n");
+        else
+            LogToFile(condition + stacktrace + "\n\n");
+    }
+
+    private static void OnLogCallback(string condition, string stacktrace, UnityEngine.LogType type)
+    {
+        if (LogCallbackEvent != null)
+            LogCallbackEvent(condition, stacktrace, type);
+    }
+
+    /// <summary>
+    /// Check if a object null
+    /// </summary>
+    /// <param name="obj"></param>
+    /// <param name="formatStr"></param>
+    /// <param name="args"></param>
+    /// <returns></returns>
+    public static bool Check(object obj, string formatStr = null, params object[] args)
+    {
+        if (obj != null) return true;
+
+        if (string.IsNullOrEmpty(formatStr))
+            formatStr = "[Check Null] Failed!";
+
+        LogError("[!!!]" + formatStr, args);
+        return false;
     }
 
     public static void Assert(bool result)
@@ -81,19 +165,29 @@ public class CDebug
             Console.WriteLine(log, args);
     }
 
-    public static void DevLog(string log, params object[] args)
+    public static void Trace(string log, params object[] args)
     {
-        if (IsDebugBuild)
-            DoLog(string.Format(log, args), LogType.WARNING);
+        DoLog(string.Format(log, args), CLogLevel.Trace);
     }
+
+    public static void Debug(string log, params object[] args)
+    {
+        DoLog(string.Format(log, args), CLogLevel.Debug);
+    }
+
+    //[Obsolete]
+    //public static void Trace(string log, params object[] args)
+    //{
+    //    DoLog(string.Format(log, args), CLogLevel.Debug);
+    //}
 
     public static void Log(string log)
     {
-        DoLog(log, LogType.NORMAL);
+        DoLog(log, CLogLevel.Info);
     }
     public static void Log(string log, params object[] args)
     {
-        DoLog(string.Format(log, args), LogType.NORMAL);
+        DoLog(string.Format(log, args), CLogLevel.Info);
     }
 
     public static void Logs(params object[] logs)
@@ -109,18 +203,31 @@ public class CDebug
 
     public static void LogException(Exception e)
     {
-        LogErrorWithStack(e.Message + " , " + e.StackTrace);
+        var sb = new StringBuilder();
+        sb.AppendFormat("Exception: {0}", e.Message);
+        if (e.InnerException != null)
+            sb.AppendFormat(" InnerException: {0}", e.InnerException.Message);
+
+        LogErrorWithStack(sb.ToString() + " , " + e.StackTrace);
     }
-    public static void LogErrorWithStack(string err = "", int stack = 1)
+
+    public static void LogErrorWithStack(string err = "", int stack = 2)
     {
-        StackFrame[] stackFrames = new StackTrace(true).GetFrames(); ;
-        StackFrame sf = stackFrames[stack];
+        StackFrame sf = GetTopStack(stack);
         string log = string.Format("[ERROR]{0}\n\n{1}:{2}\t{3}", err, sf.GetFileName(), sf.GetFileLineNumber(), sf.GetMethod());
         Console.Write(log);
-        DoLog(log, LogType.ERROR);
+        DoLog(log, CLogLevel.Error);
 
         if (LogErrorEvent != null)
             LogErrorEvent(err);
+    }
+
+
+    public static StackFrame GetTopStack(int stack = 2)
+    {
+        StackFrame[] stackFrames = new StackTrace(true).GetFrames(); ;
+        StackFrame sf = stackFrames[Mathf.Min(stack, stackFrames.Length - 1)];
+        return sf;
     }
 
     public static void LogError(string err, params object[] args)
@@ -131,7 +238,7 @@ public class CDebug
     public static void LogWarning(string err, params object[] args)
     {
         string log = string.Format(err, args);
-        DoLog(log, LogType.WARNING);
+        DoLog(log, CLogLevel.Warning);
     }
 
     public static void Pause()
@@ -139,61 +246,51 @@ public class CDebug
         UnityEngine.Debug.Break();
     }
 
-    private static void DoLog(string szMsg, LogType emType)
+    private static void DoLog(string szMsg, CLogLevel emLevel)
     {
-        szMsg = string.Format("[{0}]{1}\n\n=================================================================", DateTime.Now.ToString("HH:mm:ss.ffff"), szMsg);
+        if (LogLevel > emLevel)
+            return;
+        szMsg = string.Format("[{0}]{1}\n\n=================================================================\n\n", DateTime.Now.ToString("HH:mm:ss.ffff"), szMsg);
 
-        switch (emType)
+        switch (emLevel)
         {
-            case LogType.NORMAL:
-                UnityEngine.Debug.Log(szMsg);
-                break;
-            case LogType.WARNING:
+            case CLogLevel.Warning:
+            case CLogLevel.Trace:
                 UnityEngine.Debug.LogWarning(szMsg);
                 break;
-            case LogType.ERROR:
+            case CLogLevel.Error:
                 UnityEngine.Debug.LogError(szMsg);
+                break;
+            default:
+                UnityEngine.Debug.Log(szMsg);
                 break;
         }
 
-        LogToFile("game.log", szMsg);
     }
 
-    public static void LogToFile(string logPath, string szMsg)
+    public static void LogToFile(string szMsg)
     {
-        LogToFile(logPath, szMsg, true); // 默认追加模式
+        LogToFile(szMsg, true); // 默认追加模式
     }
 
     // 是否写过log file
-    public static bool HasLogFile(string logFile)
+    public static bool HasLogFile()
     {
-        if (IsLogFile)
-        {
-            string fullPath = GetLogPath() + logFile;
-            if (File.Exists(fullPath))
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        return false;
+        string fullPath = GetLogPath();
+        return File.Exists(fullPath);
     }
 
     // 写log文件
-    public static void LogToFile(string logFile, string szMsg, bool append)
+    public static void LogToFile(string szMsg, bool append)
     {
-        if (IsLogFile)  //  开发者模式true:写log IO文件+响应服务器log
-        {
-            string fullPath = GetLogPath() + logFile;
-            string dir = Path.GetDirectoryName(fullPath);
-            if (!Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+        string fullPath = GetLogPath();
+        string dir = Path.GetDirectoryName(fullPath);
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
 
-            using (FileStream fileStream = new FileStream(fullPath, append ? FileMode.Append : FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite))  // 不会锁死, 允许其它程序打开
+        using (FileStream fileStream = new FileStream(fullPath, append ? FileMode.Append : FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite))  // 不会锁死, 允许其它程序打开
+        {
+            lock (fileStream)
             {
                 StreamWriter writer = new StreamWriter(fileStream);  // Append
                 writer.Write(szMsg);
@@ -211,8 +308,61 @@ public class CDebug
         if (IsEditor)
             logPath = "logs/";
         else
-		    logPath = UnityEngine.Application.persistentDataPath + "/" + "logs/";
+            logPath = UnityEngine.Application.persistentDataPath + "/" + "logs/";
 
-        return logPath;
+        var now = DateTime.Now;
+        var logName = string.Format("game_{0}_{1}_{2}.log", now.Year, now.Month, now.Day);
+
+        return logPath + logName;
     }
+
+    #region Record Time
+    static float[] RecordTime = new float[10];
+    static string[] RecordKey = new string[10];
+    static int RecordPos = 0;
+
+    public static void BeginRecordTime(string key)
+    {
+        RecordTime[RecordPos] = UnityEngine.Time.realtimeSinceStartup;
+        RecordKey[RecordPos] = key;
+        RecordPos++;
+    }
+
+    public static string EndRecordTime(bool printLog = true)
+    {
+        RecordPos--;
+        double s = (UnityEngine.Time.realtimeSinceStartup - RecordTime[RecordPos]);
+        if (printLog)
+        {
+            CDebug.Log("[RecordTime] {0} use {1}s", RecordKey[RecordPos], s);
+        }
+        return string.Format("[RecordTime] {0} use {1}s.", RecordKey[RecordPos], s);
+    }
+
+    // 添加性能观察, 使用C#内置
+    public static void WatchPerformance(Action del)
+    {
+        WatchPerformance("执行耗费时间: {0}s", del);
+    }
+
+    public static void WatchPerformance(string outputStr, Action del)
+    {
+        System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+        stopwatch.Start(); //  开始监视代码运行时间
+
+        if (del != null)
+        {
+            del();
+        }
+
+        stopwatch.Stop(); //  停止监视
+        TimeSpan timespan = stopwatch.Elapsed; //  获取当前实例测量得出的总时间
+        //double seconds = timespan.TotalSeconds;  //  总秒数
+        double millseconds = timespan.TotalMilliseconds;
+        decimal seconds = (decimal)millseconds / 1000m;
+
+        CDebug.LogWarning(outputStr, seconds.ToString("F7")); // 7位精度
+    }
+    #endregion
+
 }
