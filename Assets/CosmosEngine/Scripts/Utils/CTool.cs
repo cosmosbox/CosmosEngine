@@ -1,9 +1,9 @@
 ﻿//------------------------------------------------------------------------------
 //
 //      CosmosEngine - The Lightweight Unity3D Game Develop Framework
-// 
-//                     Version 0.8 (20140904)
-//                     Copyright © 2011-2014
+//
+//                     Version 0.9.1 (20151010)
+//                     Copyright © 2011-2015
 //                   MrKelly <23110388@qq.com>
 //              https://github.com/mr-kelly/CosmosEngine
 //
@@ -458,7 +458,7 @@ public class CTool
         string timeStr = string.Format("{0}{1}{2}{3}",
             ts.Days == 0 ? "" : ts.Days + "天",
             ts.Hours == 0 ? "" : ts.Hours + "小时",
-            ts.Minutes == 0 ? "" : ts.Minutes + "分",
+            ts.Minutes == 0 ? "" : ts.Minutes + "分钟",
             ts.Seconds == 0 ? "" : ts.Seconds + "秒");
 
         return timeStr;
@@ -558,6 +558,8 @@ public class CTool
         TimeSpan diff = date - origin;
         return diff.TotalSeconds;
     }
+
+    /*  Need CronTab
     /// <summary>
     /// 测试cron是否触发(精确到分钟)
     /// </summary>
@@ -572,7 +574,7 @@ public class CTool
         CDebug.Log(span.TotalMinutes.ToString());
         return span.TotalMinutes < 1;
     }
-
+    */
     /// <summary>
     /// 人性化数字显示，百万，千万，亿
     /// </summary>

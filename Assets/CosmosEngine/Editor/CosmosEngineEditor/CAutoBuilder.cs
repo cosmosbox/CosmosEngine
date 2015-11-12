@@ -1,14 +1,13 @@
 ﻿//------------------------------------------------------------------------------
 //
 //      CosmosEngine - The Lightweight Unity3D Game Develop Framework
-// 
-//                     Version 0.8 (20140904)
-//                     Copyright © 2011-2014
+//
+//                     Version 0.9.1 (20151010)
+//                     Copyright © 2011-2015
 //                   MrKelly <23110388@qq.com>
 //              https://github.com/mr-kelly/CosmosEngine
 //
 //------------------------------------------------------------------------------
-
 using CosmosEngine;
 using UnityEngine;
 using UnityEditor;
@@ -227,10 +226,13 @@ public class CSymbolLinkHelper
     public static void SymbolLinkResource()
     {
         CSymbolLinkHelper.DeleteAllLinks(CSymbolLinkHelper.AssetBundlesLinkPath);
+
         var exportPath = GetResourceExportPath();
         var linkPath = GetLinkPath();
 
-        CBuildTools.SymbolLinkFolder(exportPath, linkPath);
+        // TODO: 
+        //CBuildTools.SymbolLinkFolder(exportPath, linkPath);
+
         AssetDatabase.Refresh();
     }
 
@@ -244,7 +246,8 @@ public class CSymbolLinkHelper
         {
             foreach (var dirPath in Directory.GetDirectories(assetBundlesLinkPath))
             {
-                CBuildTools.DeleteLink(dirPath);
+                // TODO:
+                //CBuildTools.DeleteLink(dirPath);
             }
         }
   
@@ -265,7 +268,9 @@ public class CSymbolLinkHelper
 
             if (doAction != null)
                 doAction();
-            CBuildTools.DeleteLink(linkPath);
+
+            // TODO: DeleteLink
+            //CBuildTools.DeleteLink(linkPath);
         }
         else
         {
